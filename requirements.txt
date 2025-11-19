@@ -4,3 +4,4 @@ pandas
 openpyxl
 pypdf
 xlsxwriter
+tabulate
