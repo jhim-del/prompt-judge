@@ -43,9 +43,9 @@ with st.sidebar:
     
     st.divider()
     
-    st.info("ℹ️ GPT-5 nano(gpt-4o-mini) 환경에 맞춰 Temperature=1.0(Default)이 강제 적용됩니다.")
-    gen_model = "gpt-4o-mini"  # 참가자 빙의용
-    judge_model = "gpt-4o"     # 심사위원용
+    st.info("ℹ️ GPT-5 nano 환경에 맞춰 Temperature=1.0(Default)이 강제 적용됩니다.")
+    gen_model = "gpt-5-nano"  # 참가자 빙의용
+    judge_model = "gpt-5-nano"     # 심사위원용
     
     concurrency_limit = st.slider("동시 채점 인원", 5, 50, 20, help="API 에러가 나면 줄이세요.")
     
