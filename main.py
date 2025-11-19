@@ -34,12 +34,15 @@ st.markdown("""
 # [사이드바] 설정
 # ---------------------------------------------------------
 with st.sidebar:
-    st.header("⚖️ 최종 채점 시스템 (Lite)")
+    st.header("채점 시스템 (Lite)")
+
+    api_key = st.text_input("🔑 OpenAI API Key 입력", type="password", help="sk-...로 시작하는 키를 입력하세요.")
+
     if api_key:
-        st.success(f"✅ API Key 연동 완료")
+        st.success(f"✅ API Key 입력됨")
     else:
-        st.error("❌ API Key 없음")
-        st.stop()
+        st.warning("⚠️ API Key를 입력해주세요")
+        st.stop() # 키가 없으면 이후 코드 실행 중단
     
     st.divider()
     
