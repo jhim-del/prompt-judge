@@ -7,21 +7,23 @@ from pypdf import PdfReader
 import io
 
 # ---------------------------------------------------------
-# [설정] 페이지 기본 세팅
+# [설정] 페이지 및 API 키 자동 로드
 # ---------------------------------------------------------
 st.set_page_config(page_title="DB Inc 프롬프팅 대회 채점기", layout="wide", page_icon="🏆")
 
-st.title("🏆 DB Inc 프롬프팅 경진대회 리더보드")
-st.markdown("### ⚡ Powered by GPT-5 Nano (Fastest & Most Cost-efficient)")
+# Railway 환경변수에서 API 키를 가져옵니다.
+api_key = os.getenv("OPENAI_API_KEY")
 
 # ---------------------------------------------------------
-# [사이드바] 입력 및 설정
+# [사이드바] 파일 업로드
 # ---------------------------------------------------------
 with st.sidebar:
-    st.header("⚙️ 설정")
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        api_key = st.text_input("OpenAI API Key 입력", type="password")
+    st.header("⚙️ 시스템 상태")
+    if api_key:
+        st.success("✅ API Key가 Railway에서 로드되었습니다.")
+    else:
+        st.error("❌ API Key를 찾을 수 없습니다. Railway Variables를 확인해주세요.")
+        st.stop() # 키 없으면 실행 중단
     
     st.divider()
     st.header("📂 데이터 업로드")
@@ -32,7 +34,7 @@ with st.sidebar:
     st.info("💡 참가자 엑셀 형식: A1='이름', A2='프롬프트'")
 
 # ---------------------------------------------------------
-# [기능] 파일 처리 및 채점 로직
+# [함수] 파일 처리 및 채점 로직
 # ---------------------------------------------------------
 def read_file(file):
     if not file: return None
@@ -51,54 +53,72 @@ def evaluate(client, context, target, participants):
     status = st.empty()
     total = len(participants)
     
-    # 모델 설정 (GPT-5 nano)
-    MODEL_ID = "gpt-5-nano" 
+    # 사용할 모델 설정 (혹시 5-nano가 안 되면 gpt-4o로 자동 변경 권장)
+    # 현재 코드는 사용자 요청대로 설정됨
+    MODEL_NAME = "gpt-5-nano" 
     
     for idx, row in participants.iterrows():
         name = row.iloc[0]
         prompt = row.iloc[1]
         
-        status.write(f"⚡ **{name}**님 채점 중... ({idx+1}/{total})")
+        status.write(f"⚡ **{name}**님 평가 진행 중... ({idx+1}/{total})")
         bar.progress((idx + 1) / total)
         
         try:
-            # 1. 모델 실행 (GPT-5 nano 사용)
+            # ====================================================
+            # 1단계: 참가자의 프롬프트 실행 (Generation)
+            # ====================================================
+            # 문맥 파일 + 참가자 프롬프트를 합쳐서 GPT에 입력
             messages = [
-                {"role": "system", "content": "당신은 유능한 한국어 AI 어시스턴트입니다."},
-                {"role": "user", "content": f"문맥 데이터:\n{context}\n\n요청사항:\n{prompt}"}
+                {"role": "system", "content": "당신은 데이터 분석 어시스턴트입니다. 제공된 Context를 바탕으로 사용자의 요청을 수행하세요."},
+                {"role": "user", "content": f"---[Context File]---\n{context}\n\n---[User Prompt]---\n{prompt}"}
             ]
             
-            # 실행 1 & 2 (재현성 검증)
-            out1 = client.chat.completions.create(model=MODEL_ID, messages=messages, temperature=0.7).choices[0].message.content
-            out2 = client.chat.completions.create(model=MODEL_ID, messages=messages, temperature=0.7).choices[0].message.content
+            # 재현성(Consistency) 검증을 위해 2번 실행
+            out1 = client.chat.completions.create(model=MODEL_NAME, messages=messages, temperature=0.7).choices[0].message.content
+            out2 = client.chat.completions.create(model=MODEL_NAME, messages=messages, temperature=0.7).choices[0].message.content
             
-            # 2. 심사 (Judge - 역시 GPT-5 nano 사용)
+            # ====================================================
+            # 2단계: 심사 및 채점 (Evaluation)
+            # ====================================================
+            # 보내주신 채점표(이미지)의 기준을 정확히 반영
             judge_prompt = f"""
-            당신은 프롬프트 엔지니어링 대회의 엄격한 심사위원입니다.
-            아래 기준표(Rubric)에 따라 채점하고, 결과는 반드시 JSON 형식으로 한국어로 작성하세요.
+            당신은 프롬프트 경진대회의 심사위원입니다. 
+            아래의 [평가 기준]에 맞춰 참가자를 채점하고 JSON 형식으로 응답하세요.
             
-            [채점 기준]
-            1. 정확성 (50점 만점): 결과물이 정답(Target)의 핵심 내용과 형식을 얼마나 정확히 맞췄는가?
-            2. 명확성 (30점 만점): 프롬프트가 페르소나, 단계별 지시 등을 명확히 포함하는가?
-            3. 일관성 (20점 만점): 두 번 실행(Output 1 vs 2)했을 때 결과가 얼마나 유사한가?
+            [평가 기준표]
+            1. 정확성 (Accuracy) - 배점 50점
+               - 50점: 결과가 목표 산출물(Target)과 내용/형식 모두 일치. 오류/누락 없음.
+               - 30점: 핵심 내용은 동일하나 세부 표현/구조에 차이 또는 부분 누락 있음.
+               - 20점 이하: 주요 내용 누락 또는 결과 구조가 목표와 불일치.
+               
+            2. 명확성 (Prompt Clarity) - 배점 30점
+               - 30점: 명확한 역할 지시(페르소나)와 단계별 요구사항 포함. 논리적/직관적임.
+               - 20점: 이해 가능하나 모호한 표현 존재, 출력 변동 가능성 있음.
+               - 10점 이하: 구조 불분명, 지시 혼합으로 의도 파악 어려움.
+               
+            3. 규칙 및 검증 (Consistency) - 배점 20점
+               - 20점: 2회 실행 결과(Output 1, 2)가 동일/유사하여 안정성 입증.
+               - 15점: 경미한 변동이 있으나 전반적 구조 유지.
+               - 10점 이하: 실행마다 결과가 상이하여 재현성 낮음.
 
-            [데이터]
+            [평가 데이터]
             - 참가자 프롬프트: {prompt}
-            - 정답지(Target): {target}
-            - 실행결과 1: {out1}
-            - 실행결과 2: {out2}
+            - 목표 산출물(Target): {target}
+            - 실제 결과 1: {out1}
+            - 실제 결과 2: {out2}
             
-            [출력 포맷 (JSON Only)]
+            [출력 형식 (JSON)]
             {{
                 "accuracy": 점수(int),
                 "clarity": 점수(int),
                 "consistency": 점수(int),
-                "reasoning": "상세한 심사평을 한국어로 작성 (100자 이상)"
+                "reasoning": "심사평(한글로 작성)"
             }}
             """
             
             judge = client.chat.completions.create(
-                model=MODEL_ID, 
+                model=MODEL_NAME, 
                 messages=[{"role": "system", "content": "JSON output only."}, {"role": "user", "content": judge_prompt}],
                 response_format={"type": "json_object"}
             )
@@ -107,88 +127,79 @@ def evaluate(client, context, target, participants):
             total_score = score_data['accuracy'] + score_data['clarity'] + score_data['consistency']
             
             results.append({
+                "순위": 0, # 나중에 계산
                 "이름": name,
                 "총점": total_score,
-                "정확성": score_data['accuracy'],
-                "명확성": score_data['clarity'],
-                "일관성": score_data['consistency'],
+                "정확성(50)": score_data['accuracy'],
+                "명확성(30)": score_data['clarity'],
+                "규칙성(20)": score_data['consistency'],
                 "심사평": score_data['reasoning'],
-                "프롬프트": prompt,
-                "결과물": out1
+                "실행결과": out1 # 결과 미리보기
             })
             
         except Exception as e:
-            results.append({"이름": name, "총점": 0, "심사평": f"에러 발생: {e}", "프롬프트": prompt, "결과물": "실패"})
+            # 에러 발생 시 0점 처리
+            results.append({
+                "순위": 0, "이름": name, "총점": 0, 
+                "정확성(50)": 0, "명확성(30)": 0, "규칙성(20)": 0,
+                "심사평": f"채점 중 에러 발생: {str(e)}", "실행결과": "Error"
+            })
             
-    status.success("🎉 채점 완료!")
+    status.success("🎉 모든 채점이 완료되었습니다!")
     bar.empty()
     return pd.DataFrame(results)
 
 # ---------------------------------------------------------
-# [메인] 실행 및 결과 화면
+# [메인] UI 구성
 # ---------------------------------------------------------
-if st.button("🚀 채점 시작하기 (GPT-5 nano)", type="primary", use_container_width=True):
-    if not api_key or not uploaded_context or not uploaded_target or not uploaded_participants:
-        st.error("⚠️ API 키와 모든 파일(문맥, 정답, 참가자)을 업로드해주세요.")
+st.title("🏆 DB Inc 프롬프팅 경진대회 채점 시스템")
+st.markdown("### 🤖 AI(GPT-5 nano) 기반 자동 심사 리더보드")
+
+if st.button("🚀 채점 시작 (Start Grading)", type="primary", use_container_width=True):
+    if not uploaded_context or not uploaded_target or not uploaded_participants:
+        st.error("⚠️ 모든 파일(문맥, 정답, 참가자)을 업로드해주세요!")
     else:
-        with st.spinner("GPT-5 nano가 초고속으로 채점 중입니다..."):
-            try:
-                client = OpenAI(api_key=api_key)
-                ctx_text = read_file(uploaded_context)
-                tgt_text = read_file(uploaded_target)
-                df_part = pd.read_excel(uploaded_participants)
-                
-                # 채점 실행
-                raw_df = evaluate(client, ctx_text, tgt_text, df_part)
-                
-                # 순위 산정
-                result_df = raw_df.sort_values("총점", ascending=False).reset_index(drop=True)
-                result_df.index = result_df.index + 1  # 1위부터 시작
-                result_df.index.name = "순위"
-                
-                # 1. 명예의 전당 (Top 3)
-                st.divider()
-                st.subheader("🥇 명예의 전당")
-                col1, col2, col3 = st.columns(3)
-                
-                top3 = result_df.head(3)
-                if len(top3) > 0:
-                    col1.metric(label="🥇 1위", value=f"{top3.iloc[0]['이름']}", delta=f"{top3.iloc[0]['총점']}점")
-                if len(top3) > 1:
-                    col2.metric(label="🥈 2위", value=f"{top3.iloc[1]['이름']}", delta=f"{top3.iloc[1]['총점']}점")
-                if len(top3) > 2:
-                    col3.metric(label="🥉 3위", value=f"{top3.iloc[2]['이름']}", delta=f"{top3.iloc[2]['총점']}점")
-
-                # 2. 전체 리더보드 (테이블)
-                st.divider()
-                st.subheader("📊 전체 리더보드")
-                display_cols = ["이름", "총점", "정확성", "명확성", "일관성", "심사평"]
-                st.dataframe(result_df[display_cols], use_container_width=True)
-
-                # 3. 상세 분석 (Expandable)
-                st.divider()
-                st.subheader("🧐 참가자별 상세 결과 분석")
-                for idx, row in result_df.iterrows():
-                    with st.expander(f"{idx}위 - {row['이름']} (총점: {row['총점']}점)"):
-                        c1, c2 = st.columns([1, 1])
-                        with c1:
-                            st.markdown("**📝 제출한 프롬프트**")
-                            st.info(row['프롬프트'])
-                        with c2:
-                            st.markdown("**🤖 AI 실행 결과**")
-                            st.success(row['결과물'])
-                        
-                        st.markdown("---")
-                        st.markdown(f"**👮 심사위원 평가:** {row['심사평']}")
-                        st.caption(f"세부 점수: 정확성 {row['정확성']} + 명확성 {row['명확성']} + 일관성 {row['일관성']}")
-
-                # 4. 엑셀 다운로드
-                st.divider()
-                out_io = io.BytesIO()
-                with pd.ExcelWriter(out_io, engine='xlsxwriter') as writer:
-                    result_df.to_excel(writer, sheet_name="채점결과")
-                st.download_button("💾 전체 결과 엑셀 다운로드", out_io.getvalue(), "GPT5_채점결과.xlsx", type="primary")
+        with st.spinner("심사위원들이 채점을 진행 중입니다... 잠시만 기다려주세요."):
+            client = OpenAI(api_key=api_key)
             
-            except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
-                st.warning("혹시 오류가 계속되면, OpenAI API 키에 'gpt-5-nano' 사용 권한이 있는지 확인해주세요.")
+            # 파일 읽기
+            ctx_txt = read_file(uploaded_context)
+            tgt_txt = read_file(uploaded_target)
+            df_part = pd.read_excel(uploaded_participants)
+            
+            # 평가 실행
+            result_df = evaluate(client, ctx_txt, tgt_txt, df_part)
+            
+            # 순위 매기기
+            result_df = result_df.sort_values(by="총점", ascending=False).reset_index(drop=True)
+            result_df["순위"] = result_df.index + 1
+            
+            # 컬럼 순서 정리
+            cols = ["순위", "이름", "총점", "정확성(50)", "명확성(30)", "규칙성(20)", "심사평", "실행결과"]
+            result_df = result_df[cols]
+
+            # 1. 상위권 발표
+            st.divider()
+            st.subheader("🥇 명예의 전당")
+            top3 = result_df.head(3)
+            c1, c2, c3 = st.columns(3)
+            if len(top3) > 0: c1.metric("🥇 1위", top3.iloc[0]['이름'], f"{top3.iloc[0]['총점']}점")
+            if len(top3) > 1: c2.metric("🥈 2위", top3.iloc[1]['이름'], f"{top3.iloc[1]['총점']}점")
+            if len(top3) > 2: c3.metric("🥉 3위", top3.iloc[2]['이름'], f"{top3.iloc[2]['총점']}점")
+            
+            # 2. 전체 리스트
+            st.divider()
+            st.subheader("📊 전체 채점 결과")
+            st.dataframe(result_df, use_container_width=True)
+            
+            # 3. 엑셀 다운로드
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                result_df.to_excel(writer, index=False)
+            
+            st.download_button(
+                label="📥 결과 엑셀 다운로드",
+                data=output.getvalue(),
+                file_name="최종채점결과.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
