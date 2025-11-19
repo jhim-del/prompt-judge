@@ -53,8 +53,7 @@ def evaluate(client, context, target, participants):
     status = st.empty()
     total = len(participants)
     
-    # 사용할 모델 설정 (혹시 5-nano가 안 되면 gpt-4o로 자동 변경 권장)
-    # 현재 코드는 사용자 요청대로 설정됨
+    # 사용할 모델 설정 (gpt-5-nano)
     MODEL_NAME = "gpt-5-nano" 
     
     for idx, row in participants.iterrows():
@@ -68,20 +67,18 @@ def evaluate(client, context, target, participants):
             # ====================================================
             # 1단계: 참가자의 프롬프트 실행 (Generation)
             # ====================================================
-            # 문맥 파일 + 참가자 프롬프트를 합쳐서 GPT에 입력
             messages = [
                 {"role": "system", "content": "당신은 데이터 분석 어시스턴트입니다. 제공된 Context를 바탕으로 사용자의 요청을 수행하세요."},
                 {"role": "user", "content": f"---[Context File]---\n{context}\n\n---[User Prompt]---\n{prompt}"}
             ]
             
-            # 재현성(Consistency) 검증을 위해 2번 실행
-            out1 = client.chat.completions.create(model=MODEL_NAME, messages=messages, temperature=0.7).choices[0].message.content
-            out2 = client.chat.completions.create(model=MODEL_NAME, messages=messages, temperature=0.7).choices[0].message.content
+            # [수정됨] temperature 파라미터 삭제 (기본값 사용)
+            out1 = client.chat.completions.create(model=MODEL_NAME, messages=messages).choices[0].message.content
+            out2 = client.chat.completions.create(model=MODEL_NAME, messages=messages).choices[0].message.content
             
             # ====================================================
             # 2단계: 심사 및 채점 (Evaluation)
             # ====================================================
-            # 보내주신 채점표(이미지)의 기준을 정확히 반영
             judge_prompt = f"""
             당신은 프롬프트 경진대회의 심사위원입니다. 
             아래의 [평가 기준]에 맞춰 참가자를 채점하고 JSON 형식으로 응답하세요.
@@ -117,6 +114,7 @@ def evaluate(client, context, target, participants):
             }}
             """
             
+            # [수정됨] 여기서도 temperature 삭제
             judge = client.chat.completions.create(
                 model=MODEL_NAME, 
                 messages=[{"role": "system", "content": "JSON output only."}, {"role": "user", "content": judge_prompt}],
@@ -127,18 +125,17 @@ def evaluate(client, context, target, participants):
             total_score = score_data['accuracy'] + score_data['clarity'] + score_data['consistency']
             
             results.append({
-                "순위": 0, # 나중에 계산
+                "순위": 0, 
                 "이름": name,
                 "총점": total_score,
                 "정확성(50)": score_data['accuracy'],
                 "명확성(30)": score_data['clarity'],
                 "규칙성(20)": score_data['consistency'],
                 "심사평": score_data['reasoning'],
-                "실행결과": out1 # 결과 미리보기
+                "실행결과": out1
             })
             
         except Exception as e:
-            # 에러 발생 시 0점 처리
             results.append({
                 "순위": 0, "이름": name, "총점": 0, 
                 "정확성(50)": 0, "명확성(30)": 0, "규칙성(20)": 0,
@@ -153,13 +150,13 @@ def evaluate(client, context, target, participants):
 # [메인] UI 구성
 # ---------------------------------------------------------
 st.title("🏆 DB Inc 프롬프팅 경진대회 채점 시스템")
-st.markdown("### 🤖 AI(GPT-5 nano) 기반 자동 심사 리더보드")
+st.markdown("### ⚡ Powered by GPT-5 nano")
 
 if st.button("🚀 채점 시작 (Start Grading)", type="primary", use_container_width=True):
     if not uploaded_context or not uploaded_target or not uploaded_participants:
         st.error("⚠️ 모든 파일(문맥, 정답, 참가자)을 업로드해주세요!")
     else:
-        with st.spinner("심사위원들이 채점을 진행 중입니다... 잠시만 기다려주세요."):
+        with st.spinner("GPT-5 nano가 초고속 채점을 진행 중입니다..."):
             client = OpenAI(api_key=api_key)
             
             # 파일 읽기
