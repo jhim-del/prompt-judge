@@ -117,21 +117,38 @@ async def generate_output_lite(client, model, context, prompt):
 # [변경 2] 심사 기준 간소화 (재현성 삭제, 정확성 비중 확대)
 async def audit_submission_lite(client, model, target, out1, original_prompt):
     judge_prompt = f"""
-    [역할] 프롬프트 대회 심사위원
-    [평가 기준 - 총 100점]
-    1. Accuracy (70점): Target과 실행 결과(Value, Format) 일치 여부.
-    2. Clarity (30점): 프롬프트의 명확성 및 구체성.
+    당신은 'DB Inc 프롬프팅 경진대회'의 엄격한 심사위원입니다.
+    아래 [평가 기준표]에 따라 점수를 부여하고 JSON 형식으로 출력하세요.
+
+    [평가 기준표 - 총 100점]
+
+    1. 정확성 (Accuracy) - 배점 50점
+       - 50점: 프롬프트 실행 결과가 목표 산출물(Target)과 내용/형식 모두 완벽히 일치하며 오류나 누락 없음.
+       - 30점: 핵심 내용은 동일하나 세부 표현/구조에서 일부 차이 또는 부분적 누락 있음.
+       - 20점 이하: 주요 내용이 누락되거나 결과 구조가 달라 목표 산출물과 불일치함.
+
+    2. 명확성 (Clarity) - 배점 30점
+       - 30점: 프롬프트가 명확한 역할 지시(예: "너는 데이터 분석가이다")와 단계별 요구사항을 포함하며, 사람이 읽어도 논리적/직관적임.
+       - 20점: 지시문은 이해 가능하나 일부 모호한 표현 또는 불명확한 조건이 있음.
+       - 10점 이하: 구조가 불분명하거나 지시 문장이 혼합되어 의도를 파악하기 어려움.
+
+    3. 규칙 및 검증 (Validation & Consistency) - 배점 20점
+       (※ 속도를 위해 1회 실행 결과와 Target을 비교하여 평가함)
+       - 20점: 결과가 Target의 규칙/포맷을 완벽하게 준수하여, 재실행 시에도 동일 결과가 나올 것으로 입증됨 (안정성 높음).
+       - 15점: Target과 비교 시 경미한 변동/차이가 있으나 전반적 구조와 내용은 유지됨.
+       - 10점 이하: 일관성 확인이 어렵거나, Target과 포맷이 상이하여 재현성이 낮음.
 
     [입력 데이터]
-    - Prompt: "{original_prompt}"
-    - Target: {target[:1500]} 
-    - Result: {out1[:1500]}
+    - 참가자 Prompt: "{original_prompt}"
+    - 목표 산출물 (Target): {target[:2000]}
+    - 실행 결과 (Result): {out1[:2000]}
 
     [출력 형식 (JSON Only)]
     {{
         "accuracy": int, 
         "clarity": int, 
-        "feedback": "String (100자 이내 요약)"
+        "consistency": int, 
+        "feedback": "심사평 (200자 이내 요약)"
     }}
     """
     
