@@ -105,7 +105,7 @@ def read_file(file):
     except:
         return ""
 
-async def safe_api_call(client, model, messages, retries=3, temperature=0, **kwargs):
+async def safe_api_call(client, model, messages, retries=3, temperature=0, kwargs):
     """API 호출 (RateLimit 처리 및 Temperature 설정 포함)"""
     for i in range(retries):
         try:
@@ -114,7 +114,7 @@ async def safe_api_call(client, model, messages, retries=3, temperature=0, **kwa
                 model=model, 
                 messages=messages, 
                 temperature=temperature, 
-                **kwargs
+                kwargs
             )
         except RateLimitError:
             await asyncio.sleep(1 + (i * 0.5))
@@ -137,21 +137,41 @@ async def generate_output_lite(client, model, context, prompt):
 async def audit_submission_lite(client, model, target, out1, original_prompt):
     judge_prompt = f"""
     당신은 'DB Inc 프롬프팅 경진대회'의 공정하고 분석적인 수석 심사위원입니다.
-    제출된 프롬프트와 그 실행 결과를 분석하여 평가 기준표에 따라 엄격히 채점하십시오.
-
+    제출된 프롬프트와 실행 결과를 분석하여, 아래 [판단 로직]에 따라 적절한 평가 기준표를 선택해 엄격히 채점하십시오.
+    
+    [판단 로직: 평가 기준표 선택]
+    - 평가 기준표 1 (데이터 처리): Target 데이터가 엑셀, CSV 형식이거나, 명확한 행/열 구조를 가진 표 데이터인 경우 적용. (정답 데이터와의 일치 여부가 중요)
+    - 평가 기준표 2 (일반 생성/논리): Target이 줄글, 요약, 아이디어 제안, 분류 등 비정형 텍스트인 경우 적용. (논리적 구조와 프롬프트 엔지니어링 기술이 중요)
+    
     [평가 프로세스]
     1. 먼저 제출된 '참가자 Prompt'가 단순히 정답 텍스트를 그대로 출력하도록 유도하거나, 특정 데이터에만 과적합(Overfitting)된 하드코딩인지 분석하십시오.
     2. '실행 결과'가 '목표 산출물'의 핵심 의도를 달성했는지 의미론적(Semantic)으로 비교하십시오. (단순 문자열 일치 여부가 아님)
     3. '참가자 Prompt' 내부에 일반화(Generalization)를 위한 장치(예외 처리, 명확한 구분자, few-shot 예시 등)가 포함되어 있는지 분석하십시오.
     4. 아래 JSON 포맷으로만 결과를 출력하십시오.
 
-    [중요: 데이터 포맷 평가 지침]
-    1. Target(정답지)은 엑셀 파일이 텍스트(Markdown 표)로 변환된 상태입니다.
-    2. 참가자 결과(Result)가 CSV, 탭 구분 텍스트, Markdown 표 등 '엑셀 호환 데이터 형식'이라면, 형식이 일치하는 것으로 간주하고 감점하지 마십시오.
-    3. 단, 사용자가 프롬프트에서 특정 포맷(예: "JSON으로 줘")을 명시했는데 다른 포맷을 준 경우는 감점하십시오.
+    
+    [데이터 포맷 및 멀티 시트 평가 지침]
+    1. 포맷 유연성: Target은 엑셀 형식이지만, 참가자는 텍스트(Markdown 표, CSV, JSON 등)로 제출합니다. 데이터 값과 구조가 논리적으로 일치하면 정답으로 인정하세요.
+    2. 멀티 시트(Multi-Sheet) 확인: Target 데이터에 'Sheet1', 'Sheet2' 등 여러 시트가 포함되어 있다면, 참가자의 결과물이 모든 시트의 핵심 데이터를 포함하고 있는지 확인하세요. (별도의 표로 나누거나, 하나로 잘 합쳤는지 확인)
+    
+    [평가 기준표 1 - 총 100점]
+    
+    1. 정확성 (Accuracy) - 50점
+       - 50점: Target(Sheet1, Sheet2 포함)의 모든 데이터 값과 계산 결과가 정확하게 일치함.
+       - 30점: 값은 대부분 맞으나, 일부 시트의 데이터가 누락되거나 오차가 있음.
+       - 20점 이하: 핵심 데이터가 틀리거나, 특정 시트 내용을 통째로 누락함.
+
+    2. 명확성 (Clarity) - 30점
+       - 30점: 프롬프트가 "어떤 데이터를 어떻게 가공하여 어떤 형식으로 출력하라"는 지시가 매우 구체적임.
+       - 20점: 지시가 다소 추상적이거나("알아서 정리해"), 단계가 모호함.
+       - 10점 이하: 원하는 바를 파악하기 어려움.
+
+    3. 규칙 및 검증 (Format Consistency) - 20점
+       - 20점: Target의 컬럼 구조나 데이터 형식을 잘 준수하였으며, 가독성이 뛰어남.
+       - 10점 이하: 표가 깨지거나, 데이터 구분(쉼표, 탭 등)이 엉망이라 활용이 불가능함.
 
 
-    [평가 기준표 - 총 100점]
+    [평가 기준표 2 - 총 100점]
 
     1. 결과 정확성 (Output Fidelity) - 배점 40점
        - 40점: 목표 산출물의 핵심 정보와 뉘앙스를 모두 정확히 포함함. 형식이 약간 다르더라도 의도가 완벽히 일치하면 만점.
