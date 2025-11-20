@@ -89,7 +89,15 @@ def read_file(file):
             reader = PdfReader(file)
             return "".join([page.extract_text() for page in reader.pages])
         elif ext in ['xlsx', 'xls']:
-            return pd.read_excel(file).to_markdown(index=False)
+            # sheet_name=None이면 모든 시트를 dict 형태로 가져옴 {'Sheet1': df, 'Sheet2': df...}
+            sheets_dict = pd.read_excel(file, sheet_name=None)
+            all_text = []
+            for sheet_name, df in sheets_dict.items():
+                all_text.append(f"### Sheet Name: {sheet_name}")
+                all_text.append(df.to_markdown(index=False))
+                all_text.append("\n")
+            return "\n".join(all_text)
+
         elif ext == 'csv':
             return pd.read_csv(file).to_markdown(index=False)
         else:
@@ -136,6 +144,12 @@ async def audit_submission_lite(client, model, target, out1, original_prompt):
     2. '실행 결과'가 '목표 산출물'의 핵심 의도를 달성했는지 의미론적(Semantic)으로 비교하십시오. (단순 문자열 일치 여부가 아님)
     3. '참가자 Prompt' 내부에 일반화(Generalization)를 위한 장치(예외 처리, 명확한 구분자, few-shot 예시 등)가 포함되어 있는지 분석하십시오.
     4. 아래 JSON 포맷으로만 결과를 출력하십시오.
+
+    [중요: 데이터 포맷 평가 지침]
+    1. Target(정답지)은 엑셀 파일이 텍스트(Markdown 표)로 변환된 상태입니다.
+    2. 참가자 결과(Result)가 CSV, 탭 구분 텍스트, Markdown 표 등 '엑셀 호환 데이터 형식'이라면, 형식이 일치하는 것으로 간주하고 감점하지 마십시오.
+    3. 단, 사용자가 프롬프트에서 특정 포맷(예: "JSON으로 줘")을 명시했는데 다른 포맷을 준 경우는 감점하십시오.
+
 
     [평가 기준표 - 총 100점]
 
