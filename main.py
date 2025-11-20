@@ -147,7 +147,8 @@ async def audit_submission_lite(client, model, target, out1, original_prompt):
     1. 먼저 제출된 '참가자 Prompt'가 단순히 정답 텍스트를 그대로 출력하도록 유도하거나, 특정 데이터에만 과적합(Overfitting)된 하드코딩인지 분석하십시오.
     2. '실행 결과'가 '목표 산출물'의 핵심 의도를 달성했는지 의미론적(Semantic)으로 비교하십시오. (단순 문자열 일치 여부가 아님)
     3. '참가자 Prompt' 내부에 일반화(Generalization)를 위한 장치(예외 처리, 명확한 구분자, few-shot 예시 등)가 포함되어 있는지 분석하십시오.
-    4. 아래 JSON 포맷으로만 결과를 출력하십시오.
+    4. '참가자 Prompt' 가 상세하고 예외처리를 많이 할 수록 높은 점수를 가질 확률이 올라갑니다. 
+    5. 아래 JSON 포맷으로만 결과를 출력하십시오.
 
     
     [데이터 포맷 및 멀티 시트 평가 지침]
