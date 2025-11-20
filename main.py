@@ -157,8 +157,8 @@ async def audit_submission_lite(client, model, target, out1, original_prompt):
 
     [입력 데이터]
     - 참가자 Prompt: "{original_prompt}"
-    - 목표 산출물 (Target): {target[:2000]}
-    - 실행 결과 (Result): {out1[:2000]}
+    - 목표 산출물 (Target): {target[:50000]}
+    - 실행 결과 (Result): {out1[:50000]}
 
     [출력 형식 (JSON Only)]
     {{
