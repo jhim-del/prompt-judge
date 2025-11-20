@@ -105,7 +105,7 @@ def read_file(file):
     except:
         return ""
 
-async def safe_api_call(client, model, messages, retries=3, temperature=0, kwargs):
+async def safe_api_call(client, model, messages, retries=3, temperature=0, **kwargs):
     """API 호출 (RateLimit 처리 및 Temperature 설정 포함)"""
     for i in range(retries):
         try:
@@ -114,7 +114,7 @@ async def safe_api_call(client, model, messages, retries=3, temperature=0, kwarg
                 model=model, 
                 messages=messages, 
                 temperature=temperature, 
-                kwargs
+                **kwargs
             )
         except RateLimitError:
             await asyncio.sleep(1 + (i * 0.5))
